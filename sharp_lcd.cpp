@@ -20,10 +20,6 @@
 
 /* Private variables ---------------------------------------------------------*/
 
-static const uint8_t  set[] = {1, 2, 4, 8, 16, 32, 64, 128};
-static const uint8_t  clr[] = {(uint8_t)~1,  (uint8_t)~2,  (uint8_t)~4,
-                                      (uint8_t)~8,  (uint8_t)~16, (uint8_t)~32,
-                                      (uint8_t)~64, (uint8_t)~128};
 
 uint8_t *sharpmem_buffer = NULL;
 uint8_t sharpmem_vcom = 0;
@@ -77,6 +73,44 @@ void clear_display() {
     sharplcd_cs.write(0);
 }
 
+/**
+* @brief copy the image bitmap data into memory display
+*
+* @param pBMP
+* @return int
+*/
+void draw_bitmap(const uint8_t *pBMP) {
+
+    clear_display_buffer();
+    memcpy(sharpmem_buffer, pBMP, (SHARPMEM_WIDTH * SHARPMEM_HEIGHT) / 8);
+}
+
+/**
+* @brief clear memory buffer of lcd
+*
+*/
+void clear_display_buffer() {
+
+    memset(sharpmem_buffer, 0xff, (SHARPMEM_WIDTH * SHARPMEM_HEIGHT) / 8);
+}
+
+/**
+* @brief set pixels to print boxes
+*
+* @param bin
+* @param colour
+*/
+void clear_pixels(uint16_t x_start, uint16_t x_end, uint16_t y_start, uint16_t y_end, uint8_t colour) {
+
+    for (uint16_t column = y_start; column <= y_end; column++) {
+
+        // print horizontal lines keeping y constant
+        for (uint16_t row = x_start; row <= x_end; row++) {
+            drawPixel(row, column, colour);
+        }
+    }
+}
+
 void refresh_display() {
 
     uint16_t i, currentline;
@@ -91,6 +125,8 @@ void refresh_display() {
 
     uint8_t bytes_per_line = SHARPMEM_WIDTH / 8; //50 bytes
     uint16_t totalbytes = (SHARPMEM_WIDTH * SHARPMEM_HEIGHT) / 8; //12k
+    uint8_t* line = (uint8_t*)malloc((bytes_per_line + 2) * sizeof(uint8_t));
+
 
     //Transmit data line by line using DMA
     for (i = 0; i < totalbytes; i += bytes_per_line) {
@@ -124,6 +160,9 @@ void refresh_display() {
 
     } 
 
+    free(line);
+
+
     // Send another trailing 8 bits for the last line
     uint8_t end_cmd[1] = {0x00};
 
@@ -131,13 +170,29 @@ void refresh_display() {
     sharplcd_cs.write(0);
 }
 
-void drawPixel(int16_t x, int16_t y, uint16_t color) {
+/**
+ * @brief draw single pixel in memory
+ *
+ * @param x
+ * @param y
+ * @param color
+ */
+void drawPixel(uint16_t x, uint16_t y, uint16_t color) {
 
-  if (color) {
-    sharpmem_buffer[(y * SHARPMEM_WIDTH + x) / 8] |= pgm_read_byte(&set[x & 7]);
-  } else {
-    sharpmem_buffer[(y * SHARPMEM_WIDTH + x) / 8] &= pgm_read_byte(&clr[x & 7]);
-  }
+    uint16_t buffer_index = (y * SHARPMEM_WIDTH + x) / 8;
+    uint8_t bit_position = x % 8;
+
+    // Calculate the bit mask for the specific pixel position
+    uint8_t pixel_mask = (uint8_t)(1 << (7 - bit_position));
+
+    if (color) {
+        // Set the pixel by ORing with the set bit mask
+        sharpmem_buffer[buffer_index] |= pixel_mask;
+    } else {
+        // Clear the pixel by ANDing with the clear bit mask
+        // sharpmem_buffer[buffer_index] &= clr[bit_position];
+        sharpmem_buffer[buffer_index] &= ~pixel_mask;
+    }
 }
 
 uint8_t swapByte(uint8_t value) {
@@ -327,4 +382,108 @@ clear_display();
 }
 
 
+/**
+* @brief display single character on screen
+*
+* @param x
+* @param y
+* @param character
+*/
+void drawChar(uint16_t x, uint16_t y, char character) {
 
+    if (character >= 32 && character <= 126) {
+        const uint8_t *charData = Font7x10[character - 32]; // Adjust ASCII offset (Font7x10 starts from ASCII 32)
+
+        for (uint16_t row = 0; row < 10; row++) { // 10 rows for 7x10 font
+
+            for (uint16_t col = 0; col < 7; col++) { // 7 columns for 7x10 font
+                if (charData[row] & (1 << col)) {
+                    drawPixel(x + col, y + row, 0); // Draw a pixel at (x + col, y + row)
+                } else {
+                    drawPixel(x + col, y + row, 1); // Clear a pixel at (x + col, y + row)
+                }
+            }
+        }
+    }
+}
+
+
+/**
+* @brief display int value on screen
+*
+* @param x
+* @param y
+* @param value
+*/
+void drawInt(uint16_t x, uint16_t y, int value) {
+
+    // Convert the float value to a string using snprintf
+    char valueString[10]; // Assuming the string won't exceed 10 characters
+    snprintf(valueString, sizeof(valueString), "%d", value);
+
+    // Display each character of the value string one at a time
+    for (int i = 0; valueString[i] != '\0'; i++) {
+
+        drawChar(x, y, valueString[i]);
+        x += 8; // Move to the next position for the next character
+    }
+}
+
+// Function to display a float value on the Sharp Memory LCD
+void drawFloat(uint16_t x, uint16_t y, float value, int numDecimals) {
+
+    // Convert the float value to a string using our custom function
+    char valueString[20]; // You can adjust the size based on your requirement
+    floatToString(value, valueString, numDecimals);
+
+    // Display each character of the value string one at a time
+    for (int i = 0; valueString[i] != '\0'; i++) {
+        drawChar(x, y, valueString[i]);
+        x += 8; // Move to the next position for the next character
+    }
+}
+
+/**
+* @brief  Function to convert a float value to a string
+*
+* @param value
+* @param result
+* @param numDecimals
+*/
+void floatToString(float value, char *result, int numDecimals) {
+    int intValue = (int)value;
+    int decimalValue = (int)((value - intValue) * pow(10, numDecimals));
+
+    // Convert the integer part to a string
+    int len = sprintf(result, "%d", intValue);
+
+    // If there are decimals, add the decimal point and convert the decimal part to a string
+    if (numDecimals > 0) {
+        result[len++] = '.';
+        int i;
+        for (i = 0; i < numDecimals; i++) {
+            result[len + i] = '0' + (decimalValue / (int)pow(10, numDecimals - i - 1)) % 10;
+        }
+        len += i;
+    }
+
+    // Null-terminate the string
+    result[len] = '\0';
+}
+
+/**
+ * @brief draw string on the display
+ *
+ * @param x
+ * @param y
+ * @param str
+ */
+void drawString(uint16_t x, uint16_t y, const char *str) {
+    uint16_t currentX = x;
+
+    while (*str) {
+        drawChar(currentX, y, *str);
+        currentX += 8; // Increment x position to leave space between characters (assuming 7x10 font)
+        str++;
+    }
+}

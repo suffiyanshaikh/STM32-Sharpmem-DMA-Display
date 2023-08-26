@@ -15,6 +15,8 @@
 #include "mbed.h"
 #include "mbed_error.h"
 #include "mbed_fault_handler.h"
+#include "sharp_bitmap.h"
+
 
 /* Private includes ----------------------------------------------------------*/
 
@@ -54,13 +56,24 @@ void draw_bar();
 void draw_lines();
 void draw_rectangle();
 
-// display_functions
+// sharp_functions
 int lcd_mem_init();
 void clear_display();
+void clear_display_buffer();
 void refresh_display();
-void drawPixel(int16_t x, int16_t y, uint16_t color);
+void drawPixel(uint16_t x, uint16_t y, uint16_t color);
+void clear_pixels(uint16_t x_start, uint16_t x_end, uint16_t y_start, uint16_t y_end, uint8_t colour);
+void draw_bitmap(const uint8_t* pBMP);
 uint8_t swapByte(uint8_t value);
 extern void print_data(const char* data);
+
+//To draw character
+void drawChar(uint16_t x, uint16_t y);
+void drawInt(uint16_t x, uint16_t y, int value);
+void drawFloat(uint16_t x, uint16_t y, float value, int numDecimals);
+void floatToString(float value, char *result, int numDecimals);
+void drawString(uint16_t x, uint16_t y, const char* str);
+
 
 
 
