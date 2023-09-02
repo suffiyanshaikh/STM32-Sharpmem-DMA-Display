@@ -11,6 +11,7 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "mbed.h"
+#include <cstdint>
 #include <inttypes.h>
 
 
@@ -22,12 +23,11 @@
 /* Private define ------------------------------------------------------------*/
 
 /* Private macro -------------------------------------------------------------*/
-#define SAMPLE_TIME_MS   1000
+#define SAMPLE_TIME_MS   200
 
 /* Private variables ---------------------------------------------------------*/
 char data[100];
 uint64_t prev_idle_time = 0;
-
 
 
 /* Private function prototypes -----------------------------------------------*/
@@ -55,7 +55,7 @@ int main()
         /* stop bit */ 1
     );
 
-
+   
     //Test debug led
     debug_led.write(1);
     ThisThread::sleep_for(500ms);
@@ -82,16 +82,22 @@ int main()
     display_system_info();
 
 
-    while (true) {
+    // Request the shared queue
+    EventQueue *stats_queue = mbed_event_queue();
+    stats_queue->call_every(SAMPLE_TIME_MS, display_system_stats);
 
-    display_system_stats();
-    ThisThread::sleep_for(1000);
 
 
-    // draw_lines(); 
-    // draw_rectangle();
+    // while (true) {
 
-    }
+    // display_system_stats();
+    // ThisThread::sleep_for(1000);
+
+
+    // // draw_lines(); 
+    // // draw_rectangle();
+
+    // }
 }
 
 void print_data(const char* data)
@@ -106,20 +112,24 @@ mbed_stats_sys_t sys_info;
 
 mbed_stats_sys_get(&sys_info);
 
-sprintf(data,"/*-------SYSTEM DETAILS-------*/\n");
-serial_port.write(data,strlen(data));
+uint32_t mbed_major = sys_info.os_version / 10000;
+uint32_t mbed_minor = (sys_info.os_version / 100) % 100;
+uint32_t mbed_patch = sys_info.os_version % 100;
 
-sprintf(data,"Mbed OS Version: %" PRId32 "\n", sys_info.os_version);
-serial_port.write(data,strlen(data));
+sprintf(data,"Mbed_OS_Ver: %u.%u.%u",mbed_major,mbed_minor,mbed_patch);
+drawString( 10, 60,data); //y+20
 
-sprintf(data,"CPU ID: 0x%" PRIx32 "\n\n", sys_info.cpu_id);
-serial_port.write(data,strlen(data));
 
-sprintf(data,"RAM Size: %d KB \n", (sys_info.ram_size[0]+sys_info.ram_size[1])/1024);
-serial_port.write(data,strlen(data));
+sprintf(data,"CPU_ID: 0x%" PRIx32, sys_info.cpu_id);
+drawString( 10, 80,data); //y+20
 
-sprintf(data,"ROM Size: %d MB \n", (sys_info.rom_size[0] + sys_info.rom_size[1])/1048576);
-serial_port.write(data,strlen(data));
+
+sprintf(data,"RAM_Size: %d KB", (sys_info.ram_size[0]+sys_info.ram_size[1])/1024);
+drawString( 10, 100,data); //y+20
+
+
+sprintf(data,"ROM_Size: %d MB", (sys_info.rom_size[0] + sys_info.rom_size[1])/1048576);
+drawString( 10, 120,data); //Y+20
 
 }
 
@@ -128,14 +138,10 @@ void display_system_stats() {
 
     mbed_stats_cpu_t cpu_stats;
     mbed_stats_heap_t heap_info;
-    mbed_stats_stack_t stack_info[1];
-
+    mbed_stats_stack_t stack_info;
 
     //----------- CPU USAGE ----------------------//
     mbed_stats_cpu_get(&cpu_stats);
-
-    sprintf(data,"/*------CPU USAGE--------*/\n");
-    serial_port.write(data,strlen(data));
 
     // Calculate the percentage of CPU usage
     uint64_t diff_usec = (cpu_stats.idle_time - prev_idle_time);
@@ -143,61 +149,61 @@ void display_system_stats() {
     uint8_t usage = 100 - ((diff_usec * 100) / (SAMPLE_TIME_MS*1000));
     prev_idle_time = cpu_stats.idle_time;
     
-    sprintf(data,"Time(secs): Up: %lld", cpu_stats.uptime/1000000);
-    serial_port.write(data,strlen(data));
+    sprintf(data,"Up_Time: %lld sec", cpu_stats.uptime/1000000);
+    drawString( 200, 60,data); //Y+20
 
-    sprintf(data,"   Idle: %lld", cpu_stats.idle_time/1000000);
-    serial_port.write(data,strlen(data));
+    sprintf(data,"Idle_Time: %lld sec", cpu_stats.idle_time/1000000);
+    drawString( 200, 80,data); //Y+20
 
-    sprintf(data,"   Sleep: %lld", cpu_stats.sleep_time/1000000);
-    serial_port.write(data,strlen(data));
+    sprintf(data,"Sleep_Time: %lld sec", cpu_stats.sleep_time/1000000);
+    drawString( 200, 100,data); //Y+20
 
-    sprintf(data,"   DeepSleep: %lld\n", cpu_stats.deep_sleep_time/1000000);
-    serial_port.write(data,strlen(data));
+    sprintf(data,"DeepSleep: %lld sec", cpu_stats.deep_sleep_time/1000000);
+    drawString( 200, 120,data); //Y+20
 
-    sprintf(data,"Idle: %d%% Usage: %d%%\n\n", idle, usage);
-    serial_port.write(data,strlen(data));
+    sprintf(data,"Idle: %d%% Usage: %d%%", idle, usage);
+    drawString( 200, 140,data); //Y+20
 
     //----------- Memory USAGE ----------------------//
 
-    mbed_stats_heap_get(&heap_info); //heap memory
-    sprintf(data,"/*----------MEMORY USAGE------*/\n");
-    serial_port.write(data,strlen(data));
+    //heap memory
+    mbed_stats_heap_get(&heap_info); 
 
-    sprintf(data,"Bytes allocated currently: %d Kb\n", heap_info.current_size / 1000);
-    serial_port.write(data,strlen(data));
+    sprintf(data,"heap size: %d B", heap_info.reserved_size );
+    drawString( 10, 180,data);
 
-    sprintf(data,"Max bytes allocated at a given time: %d Kb\n", heap_info.max_size / 1000);
-    serial_port.write(data,strlen(data));
 
-    sprintf(data,"Cumulative sum of bytes ever allocated: %d Kb\n", heap_info.total_size / 1000);
-    serial_port.write(data,strlen(data));
+    sprintf(data,"heap used: %d B", heap_info.current_size );
+    drawString( 10, 200,data);
 
-    sprintf(data,"Current number of bytes allocated for the heap: %d Kb\n", heap_info.reserved_size / 1000);
-    serial_port.write(data,strlen(data));
+    // sprintf(data,"Max bytes allocated at a given time: %d Kb\n", heap_info.max_size / 1000);
+    // serial_port.write(data,strlen(data));
 
-    sprintf(data,"Current number of allocations: %d\n", heap_info.alloc_cnt);
-    serial_port.write(data,strlen(data));
+    sprintf(data,"heap free: %d B", (heap_info.reserved_size - heap_info.current_size));
+    drawString( 10, 220,data);
 
-    sprintf(data,"Number of failed allocations: %d\n", heap_info.alloc_fail_cnt);
-    serial_port.write(data,strlen(data));
+   
+    //stack memory
+    mbed_stats_stack_get(&stack_info); 
 
-    mbed_stats_stack_get(&stack_info[0]); //stack memory
+    sprintf(data,"stack stack: %d B", stack_info.reserved_size);
+    drawString( 200, 180,data);
 
-    sprintf(data,"Maximum number of bytes used on the stack: %d kb\n", stack_info[0].max_size/1000);
-    serial_port.write(data,strlen(data));
+    sprintf(data,"stack size: %d B", stack_info.max_size);
+    drawString( 200, 200,data);
 
-    sprintf(data,"Current number of bytes allocated for the stack: %d Kb\n\n", stack_info[0].reserved_size/1000);
-    serial_port.write(data,strlen(data));
+    sprintf(data,"stack free: %d B", (stack_info.reserved_size - stack_info.max_size));
+    drawString( 200, 220,data);
 
+    refresh_display();
 }
 
 void display_static_page() {
 
-drawString( 200, 5,"SYSTEM STATS"); //
-drawString( 10, 25,"SYSTEM INFO");
-
-
+drawString( 100, 10,"***** SYSTEM STATS ****");
+drawString( 10, 40,"-- System Info --");
+drawString( 200, 40,"-- CPU Usage --");
+drawString( 100, 160,"-- Memory Usage --");
 
 }
 
